@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evergreen Valley High School</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background-color: #4CAF50;
+            color: white;
+            text-align: center;
+            padding: 1rem;
+        }
+        nav {
+            background-color: #333;
+            color: white;
+            padding: 0.5rem;
+        }
+        nav ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        nav ul li {
+            display: inline;
+            margin-right: 10px;
+        }
+        nav ul li a {
+            color: white;
+            text-decoration: none;
+        }
+        main {
+            padding: 20px;
+        }
+        #chat-overlay {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 300px;
+            height: 400px;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 1000;
+        }
+        #chat-header {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+        }
+        #chat-messages {
+            flex-grow: 1;
+            overflow-y: scroll;
+            padding: 10px;
+            max-height: 300px;
+        }
+        #chat-input {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #ccc;
+        }
+        #chat-input input {
+            flex-grow: 1;
+            margin-right: 10px;
+        }
+        #chat-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Evergreen Valley High School</h1>
+    </header>
+     <nav>
+        <ul>
+            <li><a href="#">Home</a></li>
+            <li><a href="#">About</a></li>
+            <li><a href="#">Academics</a></li>
+            <li><a href="#">Athletics</a></li>
+            <li><a href="#">Contact</a></li>
+        </ul>
+    </nav>
+    <main>
+        <h2>Welcome to Evergreen Valley High School</h2>
+        <p>We are committed to providing a high-quality education and fostering a supportive learning environment for all our students. Our dedicated staff and diverse programs ensure that every student has the opportunity to excel academically and personally.</p>
+        <p>Explore our website to learn more about our academic programs, extracurricular activities, and upcoming events. If you have any questions, feel free to use our chat assistant!</p>
+    </main>
+
+    <button id="chat-toggle">Chat with Us</button>
+    <div id="chat-overlay">
+        <div id="chat-header">
+            <span>EVHS Chat Assistant</span>
+            <span id="chat-close" style="cursor: pointer;">×</span>
+        </div>
+        <div id="chat-messages"></div>
+        <div id="chat-input">
+            <input type="text" id="user-input" placeholder="Type your message...">
+            <button id="send-button">Send</button>
+        </div>
+    </div>
+
+    <script>
+        $(document).ready(function() {
+            $("#chat-toggle").click(function() {
+                $("#chat-overlay").toggle();
+                if ($("#chat-messages").children().length === 0) {
+                    addMessage("Bot", "Welcome to the Evergreen Valley High School chat assistant! How can I help you today?");
+                }
+                forceScrollToBottom();
+            });
+
+            $("#chat-close").click(function() {
+                $("#chat-overlay").hide();
+            });
+
+            $("#send-button").click(sendMessage);
+            $("#user-input").keypress(function(e) {
+                if(e.which == 13) {
+                    sendMessage();
+                }
+            });
+
+            function sendMessage() {
+                var userMessage = $("#user-input").val();
+                if(userMessage.trim() !== "") {
+                    addMessage("You", userMessage);
+                    $("#user-input").val("");
+
+                    $.ajax({
+                        url: "http://localhost:5000/chat",
+                        method: "POST",
+                        data: JSON.stringify({message: userMessage}),
+                        contentType: "application/json",
+                        success: function(response) {
+                            addMessage("Bot", response.answer);
+                        },
+                        error: function() {
+                            addMessage("Bot", "Sorry, I'm having trouble connecting. Please try again later.");
+                        }
+                    });
+                }
+            }
+
+            function addMessage(sender, message) {
+                $("#chat-messages").append("<p><strong>" + sender + ":</strong> " + message + "</p>");
+                forceScrollToBottom();
+            }
+
+            function forceScrollToBottom() {
+                var chatMessages = document.getElementById('chat-messages');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+
+                // If the above doesn't work, try this:
+                $("#chat-messages").animate({ scrollTop: $('#chat-messages')[0].scrollHeight}, 200);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -4,7 +4,6 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 import logging
-import os
 from fuzzywuzzy import fuzz
 import re
 from spellchecker import SpellChecker
@@ -17,7 +16,7 @@ app = Flask(__name__)
 CORS(app)
 
 # Configuration
-CONTEXT_FILE = os.getenv('CONTEXT_FILE', 'school_contexts/school_context.txt')
+CONTEXT_FILE = 'school_contexts/school_context.txt'
 
 # Global variables
 sentence_model = None
@@ -50,20 +49,25 @@ def load_and_process_context():
 
 
 def preprocess_question(question):
-    # replace evhs with school so that these words are interchangeable.
-    question = re.sub(r'\bevhs\b', 'school', question, flags=re.IGNORECASE)
-    question = correct_spelling(question)
     question = question.lower()
+    # replace evhs with school so that these words are interchangeable.
+    question = question.replace(" u ", " you ").replace(" evhs ", " school ")
+    question = correct_spelling(question)
     question = re.sub(r'[^\w\s]', '', question)
     question = ' '.join(question.split())
     return question
 
 
-def get_relevant_context(question, top_k=3):
+def get_relevant_context(question, top_k=3, threshold=0.3):
     question_embedding = sentence_model.encode([question])
     similarities = cosine_similarity(question_embedding, context_embeddings)[0]
     top_indices = np.argsort(similarities)[-top_k:][::-1]
-    relevant_chunks = [context_chunks[i] for i in top_indices]
+    relevant_chunks = []
+    for i in top_indices:
+        if similarities[i] > threshold:
+            relevant_chunks.append(context_chunks[i])
+        else:
+            break
     return '\n\n'.join(relevant_chunks)
 
 
@@ -78,19 +82,30 @@ def is_greeting(message):
     return any(greeting in message.lower() for greeting in greetings)
 
 
+def is_farewell(message):
+    farewells = ['bye', 'goodbye', 'see you', 'take care', 'later']
+    return any(farewell in message.lower() for farewell in farewells)
+
+
+def is_thank_you(message):
+    thank_yous = ['thank you', 'thanks', 'thank you very much', 'thanks a lot']
+    return any(thank_you in message.lower() for thank_you in thank_yous)
+
+
 def validate_input(question):
     question = question.strip().lower()
     words = question.split()
 
     # List of invalid single words to reject
-    invalid_single_words = {'ok', 'what', 'when', 'where', 'who', 'why', 'how'}
+    invalid_single_words = {'ok', 'what', 'when', 'where', 'who', 'why', 'how', 'a', 'an', 'the', 'is', 'are', 'was',
+                            'were'}
 
     # Check if it's a single word and in the invalid list
     if len(words) == 1 and words[0] in invalid_single_words:
         return False
 
     # Allow valid greetings
-    if len(words) == 1 and words[0] in {'hi', 'hello', 'hey', 'greetings'}:
+    if len(words) == 1 and words[0] in {'hi', 'hello', 'hey', 'greetings','bye', 'goodbye', 'later', 'thanks'}:
         return True
 
     # Additional check for very short questions
@@ -102,7 +117,7 @@ def validate_input(question):
 
 def is_bot_capability_question(question):
     capability_patterns = [
-        r'what can you (do|help with)',
+        r'what can you (do|help|assist with)',
         r'how can you (help|assist)',
         r'what are you capable of',
         r'what do you know about',
@@ -132,6 +147,10 @@ def classify_question(question):
     question = question.lower()
     if is_greeting(question):
         return 'greeting'
+    elif is_farewell(question):
+        return 'farewell'
+    elif is_thank_you(question):
+        return 'thankyou'
     elif is_bot_capability_question(question):
         return 'bot_capability'
     elif any(word in question for word in ['how', 'when', 'what', 'where', 'who', 'why']):
@@ -151,12 +170,15 @@ def answer_question(question):
 
     original_question = question
     corrected_question = preprocess_question(question)
-    logger.info("Question asked - "+corrected_question)
+    logger.info("Question asked - " + corrected_question)
     question_type = classify_question(corrected_question)
 
     if question_type == 'greeting':
         return "Hello! Welcome to the Evergreen Valley High School chat. How can I assist you today?"
-
+    if question_type == 'farewell':
+        return "Feel free to come back anytime if you have more questions. Goodbye!"
+    if question_type == 'thankyou':
+        return "It was my pleasure! If you have any more questions, feel free to ask!"
     if question_type == 'bot_capability':
         return ("I'm an AI assistant for Evergreen Valley High School. I can provide information about the school's "
                 "programs, facilities, staff, policies, and answer general inquiries. Feel free to ask me anything "
@@ -164,6 +186,9 @@ def answer_question(question):
 
     try:
         relevant_context = get_relevant_context(corrected_question)
+
+        if not relevant_context:
+            return "I'm sorry, but I don't have enough relevant information to answer that question. Could you please ask something specific about Evergreen Valley High School?"
 
         # Split the relevant context into sentences
         sentences = re.split(r'(?<=[.!?])\s+', relevant_context)
@@ -179,6 +204,10 @@ def answer_question(question):
         else:
             # If no highly relevant sentence is found, return the most similar chunk
             answer = max(sentences, key=lambda s: fuzz.partial_ratio(corrected_question, s.lower()))
+
+        # Check if the answer is relevant enough
+        if fuzz.partial_ratio(corrected_question, answer.lower()) < 50:
+            return "I'm sorry, but I don't have enough relevant information to answer that question accurately. Could you please ask something specific about Evergreen Valley High School?"
 
         if question_type == 'yes_no':
             question_terms = set(corrected_question.lower().split()) - {'does', 'do', 'is', 'are', 'can', 'has', 'have',
